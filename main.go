@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 )
@@ -34,12 +35,23 @@ func CustomEndpoint(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
+func (cfg *apiConfig) resetCounter(w http.ResponseWriter, r *http.Request) {
+	cfg.fileserverHits = 0
+	w.WriteHeader(http.StatusOK)
+}
+func (cfg *apiConfig) metricsCounter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	htmlResponse := fmt.Sprintf("<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits)
+	w.Write([]byte(htmlResponse))
+}
 func main() {
 	apiCfg := &apiConfig{}
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/healthz", CustomEndpoint) // registering a custom endpoint handler
+	mux.HandleFunc("GET /api/healthz", CustomEndpoint) // registering a custom endpoint handler
+	mux.HandleFunc("/api/reset", apiCfg.resetCounter)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsCounter)
 
 	fileserver := http.FileServer(http.Dir("./static"))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlecounterCors(fileserver)))
