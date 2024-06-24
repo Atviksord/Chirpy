@@ -135,7 +135,8 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", CustomEndpoint) // registering a custom endpoint handler
 	mux.HandleFunc("/api/reset", apiCfg.resetCounter)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsCounter)
-	mux.HandleFunc("POST /api/validate_chirp", JsonValidateEndpoint)
+	mux.HandleFunc("POST /api/Chirps", JsonValidateEndpoint)
+	mux.HandleFunc("GET /api/Chirps")
 
 	fileserver := http.FileServer(http.Dir("./static"))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlecounterCors(fileserver)))
