@@ -1,13 +1,16 @@
 package main
 
 import (
+	"encoding/json"
+	"log"
+	"os"
 	"sync"
 	// other necessary imports
 )
 
 type Chirp struct {
-	id   int
-	body string
+	Id   int    `json:"id"`
+	Body string `json:"body"`
 }
 type DB struct {
 	path string
@@ -20,33 +23,49 @@ type DBStructure struct {
 // NewDB creates a new database connection
 // and creates the database file if it doesn't exist
 func NewDB(path string) (*DB, error) {
-	return nil
+	_, err := os.Stat(path) // quick existance check
+	if os.IsNotExist(err) {
+		initialData := `{"chirps": {}}`
+
+		err := os.WriteFile(path, []byte(initialData), 0644)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+	return &DB{path: path, mux: &sync.RWMutex{}}, nil
 }
 
 // CreateChirp creates a new chirp and saves it to disk
 func (db *DB) CreateChirp(body string) (Chirp, error) {
-	return nil
-}
+	db.mux.Lock()
+	defer db.mux.Unlock() // lock and unlock to prevent race
 
-// GetChirps returns all chirps in the database
-func (db *DB) GetChirps() ([]Chirp, error) {
-	return nil
-}
+	file, err := os.ReadFile(db.path) // fetch database file
+	if err != nil {
+		return Chirp{}, err
+	}
 
-// ensureDB creates a new database file if it doesn't exist
-func (db *DB) ensureDB() error {
-	return nil
-}
+	var data DBStructure // DatabaseJsonfile into a struct
+	err = json.Unmarshal(file, &data)
+	if err != nil {
+		return Chirp{}, err
+	}
 
-// loadDB reads the database file into memory
-func (db *DB) loadDB() (DBStructure, error) {
+	// Generate new ID based on length of Chirp Map in Dbstructure
+	NewId := len(data.Chirps) + 1
+	NewChirp := Chirp{Id: NewId, Body: body}
 
-	return nil
+	// add chirp and id to map
+	data.Chirps[NewId] = NewChirp
 
-}
+	// marshall data back to json
+	validchirp, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Error Error, Couldnt make Chirp")
 
-// writeDB writes the database file to disk
-func (db *DB) writeDB(dbStructure DBStructure) error {
+	}
+	os.WriteFile(db.path, validchirp, 0644)
+	return NewChirp, err
 
-	return nil
 }

@@ -60,7 +60,7 @@ func badWordReplacer(dirtybody string) string {
 
 }
 
-func JsonValidateEndpoint(w http.ResponseWriter, r *http.Request) {
+func JsonValidateEndpoint(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.Header().Set("Content-Type", "application/json")
 
 	type parameters struct {
@@ -102,7 +102,9 @@ func JsonValidateEndpoint(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(500)
 			return
 		}
+
 		w.Write(validdat)
+		db.CreateChirp(cleaned_body)
 
 	} else if len(params.Body) > 140 { // IF ERROR
 		w.WriteHeader(400)
@@ -131,12 +133,19 @@ func main() {
 	apiCfg := &apiConfig{}
 
 	mux := http.NewServeMux()
+	// Initialize the database instance
+	dbinstance, err := NewDB("database.json")
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %s", err)
+	}
 
 	mux.HandleFunc("GET /api/healthz", CustomEndpoint) // registering a custom endpoint handler
 	mux.HandleFunc("/api/reset", apiCfg.resetCounter)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsCounter)
-	mux.HandleFunc("POST /api/Chirps", JsonValidateEndpoint)
-	mux.HandleFunc("GET /api/Chirps")
+	mux.HandleFunc("POST /api/Chirps", func(w http.ResponseWriter, r *http.Request) {
+		JsonValidateEndpoint(w, r, dbinstance)
+	})
+	//mux.HandleFunc("GET /api/Chirps")
 
 	fileserver := http.FileServer(http.Dir("./static"))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlecounterCors(fileserver)))
@@ -146,6 +155,7 @@ func main() {
 		Addr:    "localhost:8080",
 		Handler: corsMux,
 	}
+
 	log.Fatal(server.ListenAndServe())
 
 }
