@@ -95,16 +95,23 @@ func JsonValidateEndpoint(w http.ResponseWriter, r *http.Request, db *DB) {
 	validResp := ValidResponse{CleanedBody: cleaned_body}
 
 	if len(params.Body) <= 140 { // IF OK
-		w.WriteHeader(200)
-		validdat, err := json.Marshal(validResp)
+		w.WriteHeader(201)
+		_, err := json.Marshal(validResp)
 		if err != nil {
 			log.Printf("Error marshalling JSON: %s", err)
 			w.WriteHeader(500)
 			return
 		}
 
-		w.Write(validdat)
-		db.CreateChirp(cleaned_body)
+		thefinal, err := db.CreateChirp(cleaned_body)
+		if err != nil {
+			fmt.Printf("Wow, couldnt get data from createchirp %v", err)
+		}
+		thefinalJson, err := json.Marshal(thefinal)
+		if err != nil {
+			fmt.Printf("Wow, couldnt marshal into finaljson %v", err)
+		}
+		w.Write(thefinalJson)
 
 	} else if len(params.Body) > 140 { // IF ERROR
 		w.WriteHeader(400)
@@ -129,6 +136,25 @@ func (cfg *apiConfig) metricsCounter(w http.ResponseWriter, r *http.Request) {
 	htmlResponse := fmt.Sprintf("<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits)
 	w.Write([]byte(htmlResponse))
 }
+func getChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+	cleanedChirps, err := db.GetChirps()
+	w.Header().Set("Content-Type", "application/json")
+
+	if err != nil {
+		fmt.Printf("Error Loading Chirps from database %v", err)
+		w.WriteHeader(500)
+		return
+	}
+	cleanedChirpsJson, err := json.Marshal(cleanedChirps)
+	if err != nil {
+		fmt.Printf("Failed to turn chirps into json %v", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(cleanedChirpsJson)
+
+}
 func main() {
 	apiCfg := &apiConfig{}
 
@@ -138,14 +164,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %s", err)
 	}
-
+	// ******** Handlerfunc registering station ************
 	mux.HandleFunc("GET /api/healthz", CustomEndpoint) // registering a custom endpoint handler
 	mux.HandleFunc("/api/reset", apiCfg.resetCounter)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsCounter)
-	mux.HandleFunc("POST /api/Chirps", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 		JsonValidateEndpoint(w, r, dbinstance)
 	})
-	//mux.HandleFunc("GET /api/Chirps")
+	mux.HandleFunc("GET /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+		getChirpsHandler(w, r, dbinstance)
+	})
+	mux.HandleFunc("GET /api/chirps")
 
 	fileserver := http.FileServer(http.Dir("./static"))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlecounterCors(fileserver)))

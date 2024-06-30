@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"sort"
 	"sync"
 	// other necessary imports
 )
@@ -23,17 +25,14 @@ type DBStructure struct {
 // NewDB creates a new database connection
 // and creates the database file if it doesn't exist
 func NewDB(path string) (*DB, error) {
-	_, err := os.Stat(path) // quick existance check
-	if os.IsNotExist(err) {
-		initialData := `{"chirps": {}}`
-
-		err := os.WriteFile(path, []byte(initialData), 0644)
-		if err != nil {
-			return nil, err
-		}
-
+	db := &DB{
+		path: path,
+		mux:  &sync.RWMutex{},
 	}
-	return &DB{path: path, mux: &sync.RWMutex{}}, nil
+	if err := db.ensureDB(); err != nil {
+		return nil, err
+	}
+	return db, nil
 }
 
 // CreateChirp creates a new chirp and saves it to disk
@@ -52,8 +51,19 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 		return Chirp{}, err
 	}
 
+	if data.Chirps == nil {
+		data.Chirps = make(map[int]Chirp)
+	}
+
 	// Generate new ID based on length of Chirp Map in Dbstructure
-	NewId := len(data.Chirps) + 1
+	// Find the max existing ID and increment it
+	maxID := 0
+	for id := range data.Chirps {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	NewId := maxID + 1
 	NewChirp := Chirp{Id: NewId, Body: body}
 
 	// add chirp and id to map
@@ -65,7 +75,62 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 		log.Printf("Error Error, Couldnt make Chirp")
 
 	}
-	os.WriteFile(db.path, validchirp, 0644)
+	err = os.WriteFile(db.path, validchirp, 0644)
+	if err != nil {
+		return Chirp{}, fmt.Errorf("error writing to database file: %w", err)
+	}
 	return NewChirp, err
+
+}
+
+// ensureDB creates a new database file if it doesn't exist
+func (db *DB) ensureDB() error {
+	db.mux.Lock()
+	defer db.mux.Unlock() // Lock to ensure safe concurrent access
+
+	_, err := os.Stat(db.path)
+	if os.IsNotExist(err) {
+		initialData := DBStructure{
+			Chirps: make(map[int]Chirp),
+		}
+
+		data, err := json.Marshal(initialData)
+		if err != nil {
+			return fmt.Errorf("error marshaling initial data: %v", err)
+		}
+
+		err = os.WriteFile(db.path, data, 0644)
+		if err != nil {
+			return fmt.Errorf("error writing initial data to file: %v", err)
+		}
+
+	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// use GET call to load chirps from database
+func (db *DB) GetChirps() ([]Chirp, error) {
+	data, err := os.ReadFile(db.path)
+	if err != nil {
+		fmt.Printf("Error loading file %v", err)
+	}
+	var Allchirps DBStructure
+	err = json.Unmarshal(data, &Allchirps)
+	if err != nil {
+		fmt.Printf("Error Unmarshaling data %v", err)
+	}
+	var sortedChirps []Chirp
+
+	for _, v := range Allchirps.Chirps {
+		sortedChirps = append(sortedChirps, v)
+
+	}
+	sort.Slice(sortedChirps, func(j, i int) bool {
+		return sortedChirps[i].Id > sortedChirps[j].Id
+	})
+	return sortedChirps, nil
 
 }
