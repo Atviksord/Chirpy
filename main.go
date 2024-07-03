@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -137,9 +139,8 @@ func (cfg *apiConfig) metricsCounter(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(htmlResponse))
 }
 func getChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB) {
-	cleanedChirps, err := db.GetChirps()
 	w.Header().Set("Content-Type", "application/json")
-
+	cleanedChirps, err := db.GetChirps()
 	if err != nil {
 		fmt.Printf("Error Loading Chirps from database %v", err)
 		w.WriteHeader(500)
@@ -153,6 +154,54 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	}
 	w.WriteHeader(200)
 	w.Write(cleanedChirpsJson)
+
+}
+func getSpecificChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB, id string) {
+	ID, err := strconv.Atoi(id)
+	if err != nil {
+		fmt.Printf("Error converting ID to integer")
+	}
+	// loading file
+	file, err := os.ReadFile(db.path)
+	if err != nil {
+		fmt.Printf("Error loading file %v", err)
+	}
+	var data DBStructure
+	err = json.Unmarshal(file, &data)
+	if err != nil {
+		fmt.Printf("Error Unmarshalling file into struct")
+	}
+	// get chirp at ID
+	specificchirp, exists := data.Chirps[ID]
+	if !exists {
+		w.WriteHeader(404)
+		return
+	}
+
+	// marshall into json to write to site
+	specialchirp, err := json.Marshal(specificchirp)
+	if err != nil {
+		fmt.Printf("Error marshalling into json to write to site %v", err)
+	}
+
+	w.WriteHeader(200)
+	w.Write(specialchirp)
+
+}
+
+func addusers(w http.ResponseWriter, r *http.Request, db *DB) {
+	// Add user, give ID and store email.
+	w.Header().Set("Content-Type", "application/json")
+
+	// get the reuqest body into params of User (json body)
+	decoder := json.NewDecoder(r.Body)
+	params := User{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		fmt.Printf("Couldnt Decode request body", err)
+	}
+	// Create the User, assign dynamic ID and write to file
+	returnvalue, err := db.CreateUser(params.Email)
 
 }
 func main() {
@@ -174,7 +223,13 @@ func main() {
 	mux.HandleFunc("GET /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 		getChirpsHandler(w, r, dbinstance)
 	})
-	mux.HandleFunc("GET /api/chirps")
+	mux.HandleFunc("GET /api/chirps/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		getSpecificChirpsHandler(w, r, dbinstance, id)
+	})
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
+		addusers(w, r, dbinstance)
+	})
 
 	fileserver := http.FileServer(http.Dir("./static"))
 	mux.Handle("/app/", http.StripPrefix("/app", apiCfg.middlecounterCors(fileserver)))

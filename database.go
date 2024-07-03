@@ -10,6 +10,14 @@ import (
 	// other necessary imports
 )
 
+type User struct {
+	Id    int    `json:"id"`
+	Email string `json:"email"`
+}
+type UserMap struct {
+	Users map[int]User `json:"users"`
+}
+
 type Chirp struct {
 	Id   int    `json:"id"`
 	Body string `json:"body"`
@@ -33,6 +41,51 @@ func NewDB(path string) (*DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// CreateUser creates a user from a post request
+func (db *DB) CreateUser(username string) (User, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	// fetch database json file
+	file, err := os.ReadFile(db.path) // fetch database file
+	if err != nil {
+		return User{}, err
+	}
+
+	// make an instance of Usermap
+	usersmap := UserMap{}
+	err = json.Unmarshal(file, &usersmap)
+	if err != nil {
+		return User{}, err
+	}
+	// create usermap if it doesnt exist
+	if usersmap.Users == nil {
+		usersmap.Users = make(map[int]User)
+	}
+	// check for max ID by checking the map
+	maxID := 0
+	for id := range usersmap.Users {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	NewId := maxID + 1
+	currentUser := User{Email: username, Id: NewId}
+	// change the User struct into Json with dynamic ID added
+
+	d, err := json.Marshal(currentUser)
+	if err != nil {
+		fmt.Printf("Coiuldnt marshal data into json", err)
+
+	}
+	err = os.WriteFile(db.path, d, 0644)
+	if err != nil {
+		fmt.Printf("Unable to write user to JSON file")
+	}
+	return currentUser, err
+
 }
 
 // CreateChirp creates a new chirp and saves it to disk
