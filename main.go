@@ -2,16 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 type apiConfig struct { // struct to keep how many fileserverhits
 	fileserverHits int
+	JWT            string
 }
 
 func middlewareCors(next http.Handler) http.Handler {
@@ -195,21 +199,114 @@ func addusers(w http.ResponseWriter, r *http.Request, db *DB) {
 
 	// get the reuqest body into params of User (json body)
 	decoder := json.NewDecoder(r.Body)
+
 	params := User{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		fmt.Printf("Couldnt Decode request body", err)
+		fmt.Printf("Couldnt Decode request body %v", err)
 	}
 	// Create the User, assign dynamic ID and write to file
-	returnvalue, err := db.CreateUser(params.Email)
+	returnvalue, err := db.CreateUser(params.Email, params.Password)
+
+	if err != nil {
+		fmt.Printf("Error marshalling byte data into json")
+	}
+	d, err := json.Marshal(returnvalue)
+	if err != nil {
+		fmt.Printf("Error creating user from email %v", err)
+	}
+	w.WriteHeader(201)
+	w.Write(d)
 
 }
+func userlogin(w http.ResponseWriter, r *http.Request, db *DB) {
+	w.Header().Set("Content-Type", "application/json")
+
+	decoder := json.NewDecoder(r.Body)
+	params := LoginRequest{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		fmt.Printf("Couldnt Decode request body %v", err)
+	}
+	returnedUser, err := db.GetUser(params)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	// marshal returneduser back into json
+	validuser, err := json.Marshal(returnedUser)
+	if err != nil {
+		fmt.Printf("Error marshalling returneduser into json data %v", err)
+	}
+	w.WriteHeader(200)
+	w.Write(validuser)
+
+}
+func useredit(w http.ResponseWriter, r *http.Request, db *DB) {
+	w.Header().Set("Content-Type", "application/json")
+	// Decode the JSON from the request body and put it into a struct
+	decoder := json.NewDecoder(r.Body)
+	params := User{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		http.Error(w, "Couldnt Decode request body ", http.StatusBadRequest)
+	}
+	// Get the Authorization header
+	authorization := r.Header.Get("Authorization")
+	var tokenString string
+
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		http.Error(w, "Unauthorized: missing or invalid token", http.StatusUnauthorized)
+		return
+
+	}
+	// extract the tokenstring
+	tokenString = strings.TrimPrefix(authorization, "Bearer ")
+
+	// call the editUser function
+	user, err := db.editUser(params, tokenString)
+	if err != nil {
+		http.Error(w, "Unauthorized: Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	// marshal the validUser to JSON and write the response
+	validUser, err := json.Marshal(user)
+	if err != nil {
+		http.Error(w, "Failed to marshal user", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(validUser)
+
+}
+
 func main() {
 	apiCfg := &apiConfig{}
 
+	// JWT loading into apiConfig struct
+	godotenv.Load()
+	jwtSecret := os.Getenv("JWT_SECRET")
+	apiCfg.JWT = jwtSecret
+
+	dbg := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
+	if *dbg {
+		fmt.Println("Debug mode is enabled!")
+		err := os.Remove("database.json")
+		if err != nil {
+			fmt.Printf("Error deleting file %v", err)
+		} else {
+			fmt.Println("Database successfully deleted")
+		}
+
+	} else {
+		fmt.Println("Debug mode is not enabled")
+	}
+
 	mux := http.NewServeMux()
 	// Initialize the database instance
-	dbinstance, err := NewDB("database.json")
+	dbinstance, err := NewDB("database.json", *apiCfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %s", err)
 	}
@@ -229,6 +326,12 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 		addusers(w, r, dbinstance)
+	})
+	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+		userlogin(w, r, dbinstance)
+	})
+	mux.HandleFunc("PUT /api/users", func(w http.ResponseWriter, r *http.Request) {
+		useredit(w, r, dbinstance)
 	})
 
 	fileserver := http.FileServer(http.Dir("./static"))

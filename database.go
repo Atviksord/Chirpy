@@ -6,16 +6,28 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+
+	"golang.org/x/crypto/bcrypt"
 	// other necessary imports
 )
 
+type ExpireUser struct {
+	Expires_in_seconds int `json:"expires_in_seconds"`
+}
 type User struct {
+	Id       int    `json:"id"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+type responseUser struct {
 	Id    int    `json:"id"`
 	Email string `json:"email"`
-}
-type UserMap struct {
-	Users map[int]User `json:"users"`
+	Token string `json:"token"`
 }
 
 type Chirp struct {
@@ -23,19 +35,27 @@ type Chirp struct {
 	Body string `json:"body"`
 }
 type DB struct {
-	path string
-	mux  *sync.RWMutex
+	path   string
+	mux    *sync.RWMutex
+	config apiConfig
 }
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
+	Users  map[int]User  `json:"users"`
+}
+type LoginRequest struct {
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	ExpiresInSeconds *int   `json:"expires_in_seconds"` // Optional
 }
 
 // NewDB creates a new database connection
 // and creates the database file if it doesn't exist
-func NewDB(path string) (*DB, error) {
+func NewDB(path string, apiCfg apiConfig) (*DB, error) {
 	db := &DB{
-		path: path,
-		mux:  &sync.RWMutex{},
+		path:   path,
+		mux:    &sync.RWMutex{},
+		config: apiCfg,
 	}
 	if err := db.ensureDB(); err != nil {
 		return nil, err
@@ -44,21 +64,21 @@ func NewDB(path string) (*DB, error) {
 }
 
 // CreateUser creates a user from a post request
-func (db *DB) CreateUser(username string) (User, error) {
+func (db *DB) CreateUser(username string, password string) (responseUser, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
 	// fetch database json file
 	file, err := os.ReadFile(db.path) // fetch database file
 	if err != nil {
-		return User{}, err
+		return responseUser{}, err
 	}
 
-	// make an instance of Usermap
-	usersmap := UserMap{}
+	// make an instance of DB
+	usersmap := DBStructure{}
 	err = json.Unmarshal(file, &usersmap)
 	if err != nil {
-		return User{}, err
+		return responseUser{}, err
 	}
 	// create usermap if it doesnt exist
 	if usersmap.Users == nil {
@@ -66,25 +86,168 @@ func (db *DB) CreateUser(username string) (User, error) {
 	}
 	// check for max ID by checking the map
 	maxID := 0
-	for id := range usersmap.Users {
-		if id > maxID {
-			maxID = id
+	for _, user := range usersmap.Users {
+		if user.Id > maxID {
+			maxID = user.Id
 		}
 	}
 	NewId := maxID + 1
-	currentUser := User{Email: username, Id: NewId}
+
+	// ENCRYPT PASSWORD
+	hashedpass, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		fmt.Println("ERROR HASHING PASSWORD")
+		return responseUser{}, err
+	}
+
+	currentUser := User{Email: username, Id: NewId, Password: string(hashedpass)}
 	// change the User struct into Json with dynamic ID added
 
-	d, err := json.Marshal(currentUser)
+	// add User object struct to the map
+	usersmap.Users[NewId] = currentUser
+	d, err := json.Marshal(usersmap)
+
 	if err != nil {
-		fmt.Printf("Coiuldnt marshal data into json", err)
+		fmt.Printf("Coiuldnt marshal data into json %v", err)
 
 	}
 	err = os.WriteFile(db.path, d, 0644)
 	if err != nil {
-		fmt.Printf("Unable to write user to JSON file")
+		fmt.Printf("Unable to write user to JSON file %v", err)
 	}
-	return currentUser, err
+
+	// return struct reply without password
+	returnUser := responseUser{Email: currentUser.Email, Id: currentUser.Id}
+	return returnUser, err
+
+}
+
+func (db *DB) GetDatabase() (DBStructure, error) {
+	file, err := os.ReadFile(db.path) // fetch database file
+	if err != nil {
+		return DBStructure{}, err
+	}
+
+	// make instance of the DBSTRUCTURE to dump raw data
+	datastructure := DBStructure{}
+
+	err = json.Unmarshal(file, &datastructure)
+	if err != nil {
+		fmt.Printf("Failed to dump raw json data into struct %v", err)
+	}
+	return datastructure, nil
+
+}
+
+// login function,  look up user, auth and log in.
+func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
+	// load DB file into datastructure struct
+	datastructure, err := db.GetDatabase()
+	if err != nil {
+		fmt.Println("Failed to load Database")
+		return responseUser{}, err
+	}
+	// Find user by email, if not found return error
+	var targetuser User
+	var found bool
+	for _, user := range datastructure.Users {
+		if u.Email == user.Email {
+			targetuser = user
+			found = true
+			break
+
+		}
+
+	}
+	if !found {
+		fmt.Println("User matching the email not found")
+		return responseUser{}, err
+	}
+
+	// Compare password of Dbuser with Parameter user hashed password for match
+	err = bcrypt.CompareHashAndPassword([]byte(targetuser.Password), []byte(u.Password))
+	if err != nil {
+		fmt.Printf("Wrong password %v", err)
+		return responseUser{}, err
+	}
+	// Check for Optional parameter time out seconds
+	if u.ExpiresInSeconds == nil {
+		u.ExpiresInSeconds = new(int)
+		*u.ExpiresInSeconds = 86400
+	} else if *u.ExpiresInSeconds > 86400 {
+		*u.ExpiresInSeconds = 86400
+	}
+	currentTime := jwt.NewNumericDate(time.Now().UTC())
+	duration := time.Duration(*u.ExpiresInSeconds) * time.Second
+	expirationTime := time.Now().UTC().Add(duration)
+	jwtExpirationTime := jwt.NewNumericDate(expirationTime)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    "chirpy",
+		IssuedAt:  currentTime,
+		ExpiresAt: jwtExpirationTime,
+		Subject:   strconv.Itoa(targetuser.Id),
+	})
+
+	signedToken, err := token.SignedString([]byte(db.config.JWT))
+	if err != nil {
+		fmt.Printf("Failed to sign token %v", err)
+	}
+
+	responseTarget := responseUser{Email: targetuser.Email, Id: targetuser.Id, Token: signedToken}
+
+	return responseTarget, nil
+}
+func (db *DB) editUser(u User, token string) (responseUser, error) {
+
+	// Validate the token to allow update
+	validToken, err := jwt.ParseWithClaims(token, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(db.config.JWT), nil
+	})
+	if err != nil {
+		return responseUser{}, fmt.Errorf("invalid token %v", err)
+	}
+	if !validToken.Valid {
+		return responseUser{}, fmt.Errorf("could not exctract claims: %v", err)
+	}
+
+	// extract claims
+	claims, ok := validToken.Claims.(*jwt.RegisteredClaims)
+	if !ok {
+		return responseUser{}, fmt.Errorf(
+			"error converting stringified ID to int %v",
+			err,
+		)
+	}
+
+	// get valid ID from claims
+	stringID := claims.Subject
+	validID, err := strconv.Atoi(stringID)
+	if err != nil {
+		fmt.Printf("Error getting subject from claims: %v\n", err)
+		return responseUser{}, err
+	}
+
+	// Fetch User from database
+	datastructure, err := db.GetDatabase()
+	if err != nil {
+		return responseUser{}, fmt.Errorf("failed to load database: %v", err)
+	}
+
+	// rewriting database with updated user
+	datastructure.Users[validID] = u
+	updatedData, err := json.Marshal(datastructure)
+
+	if err != nil {
+		return responseUser{}, fmt.Errorf("could not marshal data into JSON: %v", err)
+
+	}
+	// Write updated data back to the json database
+	err = os.WriteFile(db.path, updatedData, 0644)
+	if err != nil {
+		fmt.Printf("Unable to write user to JSON file %v", err)
+	}
+	return responseUser{Email: u.Email, Id: validID}, nil
 
 }
 
