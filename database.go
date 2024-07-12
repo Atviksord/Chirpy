@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -25,9 +27,10 @@ type User struct {
 	Password string `json:"password"`
 }
 type responseUser struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
-	Token string `json:"token"`
+	Id           int    `json:"id"`
+	Email        string `json:"email"`
+	Token        string `json:"token"`
+	Refreshtoken string `json:"refresh_token"`
 }
 
 type Chirp struct {
@@ -194,11 +197,24 @@ func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
 		fmt.Printf("Failed to sign token %v", err)
 	}
 
-	responseTarget := responseUser{Email: targetuser.Email, Id: targetuser.Id, Token: signedToken}
+	// Generate Refresh Token
+	c := 10
+	b := make([]byte, c)
+	d, err := rand.Read(b)
+	if err != nil {
+		fmt.Printf("Failed to rand read token")
+	}
+	a := make([]byte, d)
+	refreshCode := hex.EncodeToString(a)
+
+	responseTarget := responseUser{Email: targetuser.Email, Id: targetuser.Id, Token: signedToken, Refreshtoken: refreshCode}
 
 	return responseTarget, nil
 }
 func (db *DB) editUser(u User, token string) (responseUser, error) {
+	// lock and unlock
+	db.mux.Lock()
+	defer db.mux.Unlock()
 
 	// Validate the token to allow update
 	validToken, err := jwt.ParseWithClaims(token, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
@@ -234,8 +250,27 @@ func (db *DB) editUser(u User, token string) (responseUser, error) {
 		return responseUser{}, fmt.Errorf("failed to load database: %v", err)
 	}
 
+	// Hashing password before updating database
+	// ENCRYPT PASSWORD
+	hashedpass, err := bcrypt.GenerateFromPassword([]byte(u.Password), 10)
+	if err != nil {
+		fmt.Println("ERROR HASHING PASSWORD")
+		return responseUser{}, err
+	}
+	u.Password = string(hashedpass)
+
 	// rewriting database with updated user
-	datastructure.Users[validID] = u
+	userToUpdate := datastructure.Users[validID]
+	if u.Email != "" {
+		userToUpdate.Email = u.Email
+
+	}
+	if u.Password != "" {
+		userToUpdate.Password = u.Password
+
+	}
+	datastructure.Users[validID] = userToUpdate
+
 	updatedData, err := json.Marshal(datastructure)
 
 	if err != nil {

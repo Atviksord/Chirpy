@@ -280,6 +280,12 @@ func useredit(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.Write(validUser)
 
 }
+func tokenRefreshHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+
+}
+func tokenRevokeHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+
+}
 
 func main() {
 	apiCfg := &apiConfig{}
@@ -331,6 +337,9 @@ func main() {
 		userlogin(w, r, dbinstance)
 	})
 	mux.HandleFunc("PUT /api/users", func(w http.ResponseWriter, r *http.Request) {
+		useredit(w, r, dbinstance)
+	})
+	mux.HandleFunc("PUT /api/refresh", func(w http.ResponseWriter, r *http.Request) {
 		useredit(w, r, dbinstance)
 	})
 

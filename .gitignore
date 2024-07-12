@@ -1,0 +1,17 @@
+# Environment variables
+.env
+
+# Logs
+*.log
+
+# Compiled binaries
+*.exe
+*.o
+*.a
+*.out
+
+# Vendor directory for Go dependencies
+/vendor/
+
+# JSON database file
+database.json
