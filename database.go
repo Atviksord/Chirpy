@@ -22,9 +22,10 @@ type ExpireUser struct {
 	Expires_in_seconds int `json:"expires_in_seconds"`
 }
 type User struct {
-	Id       int    `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Id           int    `json:"id"`
+	Email        string `json:"email"`
+	Password     string `json:"password"`
+	Refreshtoken string `json:"refresh_token"`
 }
 type responseUser struct {
 	Id           int    `json:"id"`
@@ -144,17 +145,22 @@ func (db *DB) GetDatabase() (DBStructure, error) {
 
 // login function,  look up user, auth and log in.
 func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
 	// load DB file into datastructure struct
 	datastructure, err := db.GetDatabase()
 	if err != nil {
 		fmt.Println("Failed to load Database")
 		return responseUser{}, err
 	}
+
 	// Find user by email, if not found return error
 	var targetuser User
 	var found bool
-	for _, user := range datastructure.Users {
+	var index int
+	for i, user := range datastructure.Users {
 		if u.Email == user.Email {
+			index = i
 			targetuser = user
 			found = true
 			break
@@ -198,14 +204,26 @@ func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
 	}
 
 	// Generate Refresh Token
-	c := 10
-	b := make([]byte, c)
-	d, err := rand.Read(b)
+	// Generate Refresh Token
+	refreshTokenBytes := make([]byte, 32) // 256 bits
+	_, err = rand.Read(refreshTokenBytes)
 	if err != nil {
-		fmt.Printf("Failed to rand read token")
+		fmt.Printf("Failed to generate refresh token: %v", err)
 	}
-	a := make([]byte, d)
-	refreshCode := hex.EncodeToString(a)
+	refreshCode := hex.EncodeToString(refreshTokenBytes)
+
+	// writing refresh token to DB
+	targetuser.Refreshtoken = refreshCode
+
+	datastructure.Users[index] = targetuser
+	updatedData, err := json.Marshal(datastructure)
+	if err != nil {
+		return responseUser{}, fmt.Errorf("could not marshal data into JSON: %v", err)
+	}
+	err = os.WriteFile(db.path, updatedData, 0644)
+	if err != nil {
+		fmt.Printf("Unable to write user to JSON file %v", err)
+	}
 
 	responseTarget := responseUser{Email: targetuser.Email, Id: targetuser.Id, Token: signedToken, Refreshtoken: refreshCode}
 
