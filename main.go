@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -44,13 +45,6 @@ func CustomEndpoint(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-// HELPER FUNCTIONS FOR JSONVALIDATEENDPOINT
-func respondWithError(w http.ResponseWriter, code int, msg string) {
-
-}
-func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
-
-}
 func badWordReplacer(dirtybody string) string {
 
 	badWordsMap := map[string]int{"kerfuffle": 1, "sharbert": 1, "fornax": 1}
@@ -281,6 +275,46 @@ func useredit(w http.ResponseWriter, r *http.Request, db *DB) {
 
 }
 func tokenRefreshHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+	// Get refresh token from header
+	refreshTokenHeader := r.Header.Get("Authorization")
+	// Check if Header string starts with Bearer
+	if !strings.HasPrefix(refreshTokenHeader, "Bearer ") {
+		http.Error(w, "Unauthorized: missing or invalid token", http.StatusUnauthorized)
+		return
+
+	}
+	// extract the tokenstring
+
+	tokenString := strings.TrimPrefix(refreshTokenHeader, "Bearer ")
+	// get DB
+	userData, err := db.GetDatabase()
+	if err != nil {
+		fmt.Printf("Error returning DB, in refreshhandler %v", err)
+	}
+
+	// Loop DB for Refresh token match
+	var found bool
+	for i, user := range userData.Users {
+		if user.Refreshtoken == tokenString {
+			found = true
+			if userData.Users[i].Refreshexpiry.Before(time.Now().UTC()) {
+				// If refresh token has expired
+				fmt.Println("Refresh token has expired")
+				w.WriteHeader(401)
+				return
+
+			}
+		}
+
+	}
+	if !found {
+		fmt.Println("Refresh token not found no match.")
+		w.WriteHeader(401)
+		return
+	}
+	// If found and valid, return newly generated JWT(not refresh)
+	// Return the JWT 1 hour token in the responsewriter
+	w.WriteHeader(200)
 
 }
 func tokenRevokeHandler(w http.ResponseWriter, r *http.Request, db *DB) {
@@ -339,8 +373,11 @@ func main() {
 	mux.HandleFunc("PUT /api/users", func(w http.ResponseWriter, r *http.Request) {
 		useredit(w, r, dbinstance)
 	})
-	mux.HandleFunc("PUT /api/refresh", func(w http.ResponseWriter, r *http.Request) {
-		useredit(w, r, dbinstance)
+	mux.HandleFunc("POST /api/refresh", func(w http.ResponseWriter, r *http.Request) {
+		tokenRefreshHandler(w, r, dbinstance)
+	})
+	mux.HandleFunc("PUT /api/revoke", func(w http.ResponseWriter, r *http.Request) {
+		tokenRevokeHandler(w, r, dbinstance)
 	})
 
 	fileserver := http.FileServer(http.Dir("./static"))

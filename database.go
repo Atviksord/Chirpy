@@ -22,10 +22,11 @@ type ExpireUser struct {
 	Expires_in_seconds int `json:"expires_in_seconds"`
 }
 type User struct {
-	Id           int    `json:"id"`
-	Email        string `json:"email"`
-	Password     string `json:"password"`
-	Refreshtoken string `json:"refresh_token"`
+	Id            int       `json:"id"`
+	Email         string    `json:"email"`
+	Password      string    `json:"password"`
+	Refreshtoken  string    `json:"refresh_token"`
+	Refreshexpiry time.Time `json:"refresh_token_expiry"`
 }
 type responseUser struct {
 	Id           int    `json:"id"`
@@ -182,9 +183,9 @@ func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
 	// Check for Optional parameter time out seconds
 	if u.ExpiresInSeconds == nil {
 		u.ExpiresInSeconds = new(int)
-		*u.ExpiresInSeconds = 86400
-	} else if *u.ExpiresInSeconds > 86400 {
-		*u.ExpiresInSeconds = 86400
+		*u.ExpiresInSeconds = 3600
+	} else if *u.ExpiresInSeconds > 3600 {
+		*u.ExpiresInSeconds = 3600
 	}
 	currentTime := jwt.NewNumericDate(time.Now().UTC())
 	duration := time.Duration(*u.ExpiresInSeconds) * time.Second
