@@ -21,6 +21,9 @@ import (
 type ExpireUser struct {
 	Expires_in_seconds int `json:"expires_in_seconds"`
 }
+type Tokenreturn struct {
+	Token string `json:"token"`
+}
 type User struct {
 	Id            int       `json:"id"`
 	Email         string    `json:"email"`
@@ -141,6 +144,29 @@ func (db *DB) GetDatabase() (DBStructure, error) {
 		fmt.Printf("Failed to dump raw json data into struct %v", err)
 	}
 	return datastructure, nil
+
+}
+func (db *DB) generateJWT(userID int) (string, error) {
+	// My JWT creation logic here, using the userID and email
+	// 1 Hour expiration
+	currentTime := jwt.NewNumericDate(time.Now().UTC())
+	duration := time.Duration(3600) * time.Second
+	expirationTime := time.Now().UTC().Add(duration)
+	jwtExpirationTime := jwt.NewNumericDate(expirationTime)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    "chirpy",
+		IssuedAt:  currentTime,
+		ExpiresAt: jwtExpirationTime,
+		Subject:   strconv.Itoa(userID),
+	})
+
+	signedToken, err := token.SignedString([]byte(db.config.JWT))
+	if err != nil {
+		fmt.Printf("Failed to sign token %v", err)
+		return "", err
+	}
+	return signedToken, nil
 
 }
 

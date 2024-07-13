@@ -290,20 +290,23 @@ func tokenRefreshHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	userData, err := db.GetDatabase()
 	if err != nil {
 		fmt.Printf("Error returning DB, in refreshhandler %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 
 	// Loop DB for Refresh token match
 	var found bool
-	for i, user := range userData.Users {
+	var validUserId int
+	for _, user := range userData.Users {
 		if user.Refreshtoken == tokenString {
 			found = true
-			if userData.Users[i].Refreshexpiry.Before(time.Now().UTC()) {
+			if user.Refreshexpiry.Before(time.Now().UTC()) {
 				// If refresh token has expired
 				fmt.Println("Refresh token has expired")
 				w.WriteHeader(401)
 				return
 
 			}
+			validUserId = user.Id
 		}
 
 	}
@@ -314,6 +317,20 @@ func tokenRefreshHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	}
 	// If found and valid, return newly generated JWT(not refresh)
 	// Return the JWT 1 hour token in the responsewriter
+	newJwtString, err := db.generateJWT(validUserId)
+	if err != nil {
+		fmt.Printf("Error generating JWT in tokenRefreshHandler: %v\n", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+
+	}
+	tokenStruct := Tokenreturn{Token: newJwtString}
+
+	jsonJwtString, err := json.Marshal(tokenStruct)
+	if err != nil {
+		fmt.Println("Cant marshal tokenstruct into json tknrefreshhandler")
+	}
+	w.Write(jsonJwtString)
 	w.WriteHeader(200)
 
 }
