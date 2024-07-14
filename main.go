@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -277,44 +276,12 @@ func useredit(w http.ResponseWriter, r *http.Request, db *DB) {
 func tokenRefreshHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	// Get refresh token from header
 	refreshTokenHeader := r.Header.Get("Authorization")
-	// Check if Header string starts with Bearer
-	if !strings.HasPrefix(refreshTokenHeader, "Bearer ") {
-		http.Error(w, "Unauthorized: missing or invalid token", http.StatusUnauthorized)
-		return
 
-	}
-	// extract the tokenstring
-
-	tokenString := strings.TrimPrefix(refreshTokenHeader, "Bearer ")
-	// get DB
-	userData, err := db.GetDatabase()
+	validUserId, err := db.RefreshtokenCheck(refreshTokenHeader)
 	if err != nil {
-		fmt.Printf("Error returning DB, in refreshhandler %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
-
-	// Loop DB for Refresh token match
-	var found bool
-	var validUserId int
-	for _, user := range userData.Users {
-		if user.Refreshtoken == tokenString {
-			found = true
-			if user.Refreshexpiry.Before(time.Now().UTC()) {
-				// If refresh token has expired
-				fmt.Println("Refresh token has expired")
-				w.WriteHeader(401)
-				return
-
-			}
-			validUserId = user.Id
-		}
-
-	}
-	if !found {
-		fmt.Println("Refresh token not found no match.")
 		w.WriteHeader(401)
-		return
 	}
+
 	// If found and valid, return newly generated JWT(not refresh)
 	// Return the JWT 1 hour token in the responsewriter
 	newJwtString, err := db.generateJWT(validUserId)

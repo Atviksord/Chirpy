@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,46 @@ type LoginRequest struct {
 	Email            string `json:"email"`
 	Password         string `json:"password"`
 	ExpiresInSeconds *int   `json:"expires_in_seconds"` // Optional
+}
+
+func (db *DB) RefreshtokenCheck(refreshTokenHeader string) (int, error) {
+
+	// Check if Header string starts with Bearer
+	if !strings.HasPrefix(refreshTokenHeader, "Bearer ") {
+		return 0, fmt.Errorf("unauthorized: missing or invalid token")
+
+	}
+	// extract the tokenstring
+
+	tokenString := strings.TrimPrefix(refreshTokenHeader, "Bearer ")
+	// get DB
+	userData, err := db.GetDatabase()
+	if err != nil {
+		return 0, fmt.Errorf("error returning DB, in refreshhandler %v", err)
+
+	}
+
+	// Loop DB for Refresh token match
+	var found bool
+	var validUserId int
+	for _, user := range userData.Users {
+		if user.Refreshtoken == tokenString {
+			found = true
+			if user.Refreshexpiry.Before(time.Now().UTC()) {
+				// If refresh token has expired
+				return 0, fmt.Errorf("refresh token has expired")
+
+			}
+			validUserId = user.Id
+		}
+
+	}
+	if !found {
+		return 0, fmt.Errorf("refresh token not found no match")
+
+	}
+	return validUserId, nil
+
 }
 
 // NewDB creates a new database connection
