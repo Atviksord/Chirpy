@@ -302,6 +302,30 @@ func tokenRefreshHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 
 }
 func tokenRevokeHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	refreshTokenHeader := r.Header.Get("Authorization")
+
+	validUserId, err := db.RefreshtokenCheck(refreshTokenHeader)
+	if err != nil {
+		w.WriteHeader(401)
+	}
+	// Get DB to check
+	datastructure, err := db.GetDatabase()
+	if err != nil {
+		fmt.Printf("Error getting DB, in TokenRevokeHandler %v", err)
+	}
+	validUser := datastructure.Users[validUserId]
+	validUser.Refreshtoken = ""
+	datastructure.Users[validUserId] = validUser
+
+	file, err := json.Marshal(datastructure)
+	err = os.WriteFile(db.path, file, 0644)
+	if err != nil {
+		fmt.Printf("Unable to write user to JSON file Tokenrevokehandler %v", err)
+	}
+	w.WriteHeader(204)
 
 }
 
