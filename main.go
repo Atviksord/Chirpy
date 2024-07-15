@@ -321,6 +321,9 @@ func tokenRevokeHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	datastructure.Users[validUserId] = validUser
 
 	file, err := json.Marshal(datastructure)
+	if err != nil {
+		fmt.Println("Failed to marshall datastruct")
+	}
 	err = os.WriteFile(db.path, file, 0644)
 	if err != nil {
 		fmt.Printf("Unable to write user to JSON file Tokenrevokehandler %v", err)
@@ -384,7 +387,7 @@ func main() {
 	mux.HandleFunc("POST /api/refresh", func(w http.ResponseWriter, r *http.Request) {
 		tokenRefreshHandler(w, r, dbinstance)
 	})
-	mux.HandleFunc("PUT /api/revoke", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/revoke", func(w http.ResponseWriter, r *http.Request) {
 		tokenRevokeHandler(w, r, dbinstance)
 	})
 

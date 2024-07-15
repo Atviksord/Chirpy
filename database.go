@@ -279,9 +279,12 @@ func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
 		fmt.Printf("Failed to generate refresh token: %v", err)
 	}
 	refreshCode := hex.EncodeToString(refreshTokenBytes)
+	// Get refreshtoken expiry time
+	refreshExpiry := time.Now().UTC().Add(time.Hour * 24 * 60)
 
 	// writing refresh token to DB
 	targetuser.Refreshtoken = refreshCode
+	targetuser.Refreshexpiry = refreshExpiry
 
 	datastructure.Users[index] = targetuser
 	updatedData, err := json.Marshal(datastructure)
