@@ -40,8 +40,9 @@ type responseUser struct {
 }
 
 type Chirp struct {
-	Id   int    `json:"id"`
-	Body string `json:"body"`
+	Id        int    `json:"id"`
+	Body      string `json:"body"`
+	Author_id int    `json:"author_id"`
 }
 type DB struct {
 	path   string
@@ -375,8 +376,40 @@ func (db *DB) editUser(u User, token string) (responseUser, error) {
 
 }
 
+func (db *DB) JwtValidationCheck(token string) (int, error) {
+	// Validate the token to allow update
+	validToken, err := jwt.ParseWithClaims(token, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(db.config.JWT), nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("invalid token %v", err)
+	}
+	if !validToken.Valid {
+		return 0, fmt.Errorf("could not exctract claims: %v", err)
+	}
+
+	// extract claims
+	claims, ok := validToken.Claims.(*jwt.RegisteredClaims)
+	if !ok {
+		return 0, fmt.Errorf(
+			"error converting stringified ID to int %v",
+			err,
+		)
+	}
+
+	// get valid ID from claims
+	stringID := claims.Subject
+	validID, err := strconv.Atoi(stringID)
+	if err != nil {
+		fmt.Printf("Error getting subject from claims: %v\n", err)
+		return 0, err
+	}
+	return validID, nil
+
+}
+
 // CreateChirp creates a new chirp and saves it to disk
-func (db *DB) CreateChirp(body string) (Chirp, error) {
+func (db *DB) CreateChirp(body string, authorid int) (Chirp, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock() // lock and unlock to prevent race
 
@@ -404,7 +437,7 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 		}
 	}
 	NewId := maxID + 1
-	NewChirp := Chirp{Id: NewId, Body: body}
+	NewChirp := Chirp{Id: NewId, Body: body, Author_id: authorid}
 
 	// add chirp and id to map
 	data.Chirps[NewId] = NewChirp

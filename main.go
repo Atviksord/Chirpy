@@ -62,13 +62,32 @@ func badWordReplacer(dirtybody string) string {
 func JsonValidateEndpoint(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Check authorization header
+	authorization := r.Header.Get("Authorization")
+	var tokenString string
+
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		http.Error(w, "Unauthorized: missing or invalid token", http.StatusUnauthorized)
+		return
+
+	}
+	// extract the tokenstring
+	tokenString = strings.TrimPrefix(authorization, "Bearer ")
+	// Check JWT claims
+	author_id, err := db.JwtValidationCheck(tokenString)
+	if err != nil {
+		fmt.Printf("Error validating the JWT")
+		w.WriteHeader(401)
+		return
+	}
+	// Chirp creation logic
 	type parameters struct {
 		Body string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	// check for profanity and replace after this
 
 	if err != nil {
@@ -102,7 +121,7 @@ func JsonValidateEndpoint(w http.ResponseWriter, r *http.Request, db *DB) {
 			return
 		}
 
-		thefinal, err := db.CreateChirp(cleaned_body)
+		thefinal, err := db.CreateChirp(cleaned_body, author_id)
 		if err != nil {
 			fmt.Printf("Wow, couldnt get data from createchirp %v", err)
 		}
