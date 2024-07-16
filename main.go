@@ -204,6 +204,38 @@ func getSpecificChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB, id
 	w.Write(specialchirp)
 
 }
+func deleteSpecificChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB, id string) {
+	// Authorized only check
+	w.Header().Set("Content-Type", "application/json")
+
+	// Check authorization header
+	authorization := r.Header.Get("Authorization")
+	var tokenString string
+
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		http.Error(w, "Unauthorized: missing or invalid token", http.StatusUnauthorized)
+		return
+
+	}
+	// extract the tokenstring
+	tokenString = strings.TrimPrefix(authorization, "Bearer ")
+	// Check JWT claims
+	author_id, err := db.JwtValidationCheck(tokenString)
+	if err != nil {
+		fmt.Printf("Error validating the JWT")
+		w.WriteHeader(401)
+		return
+	}
+	datastructure, err := db.GetDatabase()
+	if err != nil {
+		fmt.Printf("ERROR GETTING DB in delete")
+	}
+
+	if len(DBStructure.Chirps) < id {
+		fmt.Println("No such Chirp ID")
+	}
+
+}
 
 func addusers(w http.ResponseWriter, r *http.Request, db *DB) {
 	// Add user, give ID and store email.
@@ -408,6 +440,10 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/revoke", func(w http.ResponseWriter, r *http.Request) {
 		tokenRevokeHandler(w, r, dbinstance)
+	})
+	mux.HandleFunc("DELETE /api/chirps/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		deleteSpecificChirpsHandler(w, r, dbinstance, id)
 	})
 
 	fileserver := http.FileServer(http.Dir("./static"))
