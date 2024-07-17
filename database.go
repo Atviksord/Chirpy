@@ -508,3 +508,21 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 	return sortedChirps, nil
 
 }
+func (db *DB) GetAuthorChirps(chirps []Chirp, authorId string) ([]Chirp, error) {
+	var trueChirp []Chirp
+
+	authorIdz, err := strconv.Atoi(authorId)
+	if err != nil {
+		fmt.Print("Couldnt return")
+	}
+
+	for _, chirp := range chirps {
+		if chirp.Author_id == authorIdz {
+			trueChirp = append(trueChirp, chirp)
+		}
+	}
+	sort.Slice(trueChirp, func(j, i int) bool {
+		return trueChirp[i].Id > trueChirp[j].Id
+	})
+	return trueChirp, nil
+}

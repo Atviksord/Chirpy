@@ -157,11 +157,23 @@ func (cfg *apiConfig) metricsCounter(w http.ResponseWriter, r *http.Request) {
 }
 func getChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.Header().Set("Content-Type", "application/json")
+	s := r.URL.Query().Get("author_id")
+
 	cleanedChirps, err := db.GetChirps()
+
 	if err != nil {
 		fmt.Printf("Error Loading Chirps from database %v", err)
 		w.WriteHeader(500)
 		return
+	}
+	// Check for optional query string of Author Id
+	if s != "" {
+		cleanedChirps, err = db.GetAuthorChirps(cleanedChirps, s)
+		if err != nil {
+			fmt.Printf("Couldnt get authoredChirps %v", err)
+			return
+
+		}
 	}
 	cleanedChirpsJson, err := json.Marshal(cleanedChirps)
 	if err != nil {
