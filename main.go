@@ -402,7 +402,7 @@ func tokenRevokeHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.WriteHeader(204)
 
 }
-func polkaHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+func polkaHandler(w http.ResponseWriter, r *http.Request, db *DB, apiCfg *apiConfig) {
 	w.Header().Set("Content-Type", "application/json")
 	// Decode the JSON from the request body and put it into a struct
 	decoder := json.NewDecoder(r.Body)
@@ -410,6 +410,22 @@ func polkaHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	err := decoder.Decode(&Polker)
 	if err != nil {
 		http.Error(w, "Couldnt Decode request body ", http.StatusBadRequest)
+		return
+	}
+	// Get the Authorization header
+	authorization := r.Header.Get("Authorization")
+	var tokenString string
+
+	if !strings.HasPrefix(authorization, "ApiKey ") {
+		http.Error(w, "Unauthorized: missing or invalid token", http.StatusUnauthorized)
+		return
+
+	}
+	// extract the tokenstring
+	tokenString = strings.TrimPrefix(authorization, "ApiKey ")
+
+	if tokenString != apiCfg.POLKA {
+		w.WriteHeader(401)
 		return
 	}
 
@@ -428,6 +444,7 @@ func main() {
 	godotenv.Load()
 	jwtSecret := os.Getenv("JWT_SECRET")
 	polkaSecret := os.Getenv("POLKA_SECRET")
+	apiCfg.POLKA = polkaSecret
 	apiCfg.JWT = jwtSecret
 
 	dbg := flag.Bool("debug", false, "Enable debug mode")
@@ -485,7 +502,7 @@ func main() {
 		deleteSpecificChirpsHandler(w, r, dbinstance, id)
 	})
 	mux.HandleFunc("POST /api/polka/webhooks", func(w http.ResponseWriter, r *http.Request) {
-		polkaHandler(w, r, dbinstance)
+		polkaHandler(w, r, dbinstance, apiCfg)
 	})
 
 	fileserver := http.FileServer(http.Dir("./static"))
