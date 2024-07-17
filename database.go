@@ -16,7 +16,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"golang.org/x/crypto/bcrypt"
-	// other necessary imports
 )
 
 type ExpireUser struct {
@@ -31,12 +30,14 @@ type User struct {
 	Password      string    `json:"password"`
 	Refreshtoken  string    `json:"refresh_token"`
 	Refreshexpiry time.Time `json:"refresh_token_expiry"`
+	IsChirpyRed   bool      `json:"is_chirpy_red"`
 }
 type responseUser struct {
 	Id           int    `json:"id"`
 	Email        string `json:"email"`
 	Token        string `json:"token"`
 	Refreshtoken string `json:"refresh_token"`
+	IsChirpyRed  bool   `json:"is_chirpy_red"`
 }
 
 type Chirp struct {
@@ -158,7 +159,7 @@ func (db *DB) CreateUser(username string, password string) (responseUser, error)
 	d, err := json.Marshal(usersmap)
 
 	if err != nil {
-		fmt.Printf("Coiuldnt marshal data into json %v", err)
+		fmt.Printf("Couldnt marshal data into json %v", err)
 
 	}
 	err = os.WriteFile(db.path, d, 0644)
@@ -297,7 +298,7 @@ func (db *DB) GetUser(u LoginRequest) (responseUser, error) {
 		fmt.Printf("Unable to write user to JSON file %v", err)
 	}
 
-	responseTarget := responseUser{Email: targetuser.Email, Id: targetuser.Id, Token: signedToken, Refreshtoken: refreshCode}
+	responseTarget := responseUser{Email: targetuser.Email, Id: targetuser.Id, Token: signedToken, Refreshtoken: refreshCode, IsChirpyRed: targetuser.IsChirpyRed}
 
 	return responseTarget, nil
 }

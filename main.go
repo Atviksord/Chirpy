@@ -16,6 +16,7 @@ import (
 type apiConfig struct { // struct to keep how many fileserverhits
 	fileserverHits int
 	JWT            string
+	POLKA          string
 }
 
 func middlewareCors(next http.Handler) http.Handler {
@@ -207,6 +208,12 @@ func getSpecificChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB, id
 func deleteSpecificChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB, id string) {
 	// Authorized only check
 	w.Header().Set("Content-Type", "application/json")
+	toDeleteID, err := strconv.Atoi(id)
+	if err != nil {
+		http.Error(w, "Invalid chirp ID", http.StatusBadRequest)
+		return
+
+	}
 
 	// Check authorization header
 	authorization := r.Header.Get("Authorization")
@@ -222,18 +229,31 @@ func deleteSpecificChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB,
 	// Check JWT claims
 	author_id, err := db.JwtValidationCheck(tokenString)
 	if err != nil {
-		fmt.Printf("Error validating the JWT")
-		w.WriteHeader(401)
+		http.Error(w, "Unauthorized: invalid token", http.StatusUnauthorized)
+
 		return
 	}
+	// Get Database to check author id on chirp to match
 	datastructure, err := db.GetDatabase()
 	if err != nil {
-		fmt.Printf("ERROR GETTING DB in delete")
+		http.Error(w, "Unable to get DB", http.StatusInternalServerError)
+		return
 	}
 
-	if len(DBStructure.Chirps) < id {
-		fmt.Println("No such Chirp ID")
+	// Check if chirp exists
+	chirp, exists := datastructure.Chirps[toDeleteID]
+	if !exists {
+		http.Error(w, "Chirp not found", http.StatusNotFound)
+		return
 	}
+	// If authenticated user is NOT the owner of the chirp delete
+	if chirp.Author_id != author_id {
+		http.Error(w, "Forbidden: you are not the author of this chirp", http.StatusForbidden)
+		return
+	}
+	// delete operation if owner
+	delete(datastructure.Chirps, toDeleteID)
+	w.WriteHeader(http.StatusNoContent)
 
 }
 
@@ -382,13 +402,32 @@ func tokenRevokeHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.WriteHeader(204)
 
 }
+func polkaHandler(w http.ResponseWriter, r *http.Request, db *DB) {
+	w.Header().Set("Content-Type", "application/json")
+	// Decode the JSON from the request body and put it into a struct
+	decoder := json.NewDecoder(r.Body)
+	Polker := Polka{}
+	err := decoder.Decode(&Polker)
+	if err != nil {
+		http.Error(w, "Couldnt Decode request body ", http.StatusBadRequest)
+		return
+	}
 
+	err = db.polkachecker(Polker)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Println(err)
+	}
+	w.WriteHeader(204)
+
+}
 func main() {
 	apiCfg := &apiConfig{}
 
 	// JWT loading into apiConfig struct
 	godotenv.Load()
 	jwtSecret := os.Getenv("JWT_SECRET")
+	polkaSecret := os.Getenv("POLKA_SECRET")
 	apiCfg.JWT = jwtSecret
 
 	dbg := flag.Bool("debug", false, "Enable debug mode")
@@ -444,6 +483,9 @@ func main() {
 	mux.HandleFunc("DELETE /api/chirps/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		deleteSpecificChirpsHandler(w, r, dbinstance, id)
+	})
+	mux.HandleFunc("POST /api/polka/webhooks", func(w http.ResponseWriter, r *http.Request) {
+		polkaHandler(w, r, dbinstance)
 	})
 
 	fileserver := http.FileServer(http.Dir("./static"))
