@@ -158,6 +158,7 @@ func (cfg *apiConfig) metricsCounter(w http.ResponseWriter, r *http.Request) {
 func getChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 	w.Header().Set("Content-Type", "application/json")
 	s := r.URL.Query().Get("author_id")
+	d := r.URL.Query().Get("sort")
 
 	cleanedChirps, err := db.GetChirps()
 
@@ -174,6 +175,11 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request, db *DB) {
 			return
 
 		}
+	}
+	// optional sorting logic checker
+	cleanedChirps, err = db.MasterSorter(cleanedChirps, s, d)
+	if err != nil {
+		fmt.Printf("Couldnt sort %v", err)
 	}
 	cleanedChirpsJson, err := json.Marshal(cleanedChirps)
 	if err != nil {

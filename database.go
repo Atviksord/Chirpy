@@ -526,3 +526,19 @@ func (db *DB) GetAuthorChirps(chirps []Chirp, authorId string) ([]Chirp, error) 
 	})
 	return trueChirp, nil
 }
+func (db *DB) MasterSorter(chirps []Chirp, authorId string, sorter string) ([]Chirp, error) {
+	if (sorter == "asc") || (sorter == "") {
+		sort.Slice(chirps, func(j, i int) bool {
+			return chirps[i].Id > chirps[j].Id
+		})
+
+	}
+	if sorter == "desc" {
+		sort.Slice(chirps, func(j, i int) bool {
+			return chirps[i].Id < chirps[j].Id
+		})
+
+	}
+	return chirps, nil
+
+}
